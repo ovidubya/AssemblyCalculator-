@@ -1,0 +1,934 @@
+plp.metafile                                                                                        100644  000000  000000  00000000122 13012166776 011534  0                                                                                                    ustar 00                                                                000000  000000                                                                                                                                                                         PLP-5.0
+START=268435456
+DIRTY=0
+ARCH=0
+
+main.asm
+project_3_uart_output_module.asm
+                                                                                                                                                                                                                                                                                                                                                                                                                                              main.asm                                                                                            100644  000000  000000  00000003257 13012166776 010673  0                                                                                                    ustar 00                                                                000000  000000                                                                                                                                                                         # main source file
+
+.org 0x10000000
+
+li $sp, 0x10fffffc #stack pointer
+li $a0, 0
+li $a1, 0
+
+li $s0, 0xf0000000 #uart address
+li $s1, 48
+li $s2, 0b10
+li $s3, 10
+
+li $s4, '='
+li $s5, '+'
+li $s6, '-'
+li $s7, '*'
+
+li $v0, 0
+li $t2, 0 # checks to see if less than 9
+
+
+main:
+	lw $t0, 4($s0)	# load status register
+	and $t0, $t0, $s2	# mask for ready bit
+	bne $t0, $s2, main
+	nop
+	lw $t0, 8($s0) #gets the number from recieve register in uart
+	sw $s2, 0($s0) #resets the register and gets the next number
+	bne $s4, $t0 not_equals 
+	nop
+	pop $t3 #could +, - or * # in the stack there is a number and a operator. pops out the operator
+
+	beq $t3, $s5, finalA #if the operator is a + than branch
+	nop
+	beq $t3, $s6, finalS #if the operator is a - than branch
+	nop
+	beq $t3, $s7, finalM #if the operator is a * then branch
+	nop
+
+not_equals:
+	beq $t0, $s5 addition #checks to see if its a + symbol
+	nop
+	beq $t0, $s6 subtraction
+	nop
+	beq $t0, $s7 multiplication
+	nop
+
+	subu $t0, $t0, $s1 
+	slt $t2, $t0, $s3 # checks to see if number is less than 9, 1 yes 0 no
+	beq $t2, $0 invalid_char
+	nop
+
+	mullo $v0, $v0, $s3
+	addu $v0, $v0, $t0
+	j main
+	nop
+
+addition:
+	push $v0
+	move $v0, $0
+	push $t0
+	j main
+	nop
+	subtraction:
+	push $v0
+	move $v0, $0
+	push $t0
+	j main
+	nop
+multiplication:
+	push $v0
+	move $v0, $0
+	push $t0
+	j main 
+	nop
+invalid_char:
+	li $a1, 1
+	j main
+	nop
+finalM:
+	pop $t3
+	mullo $a0, $t3, $v0
+	call project3_output_number
+	li $a1, 0
+	move $v0, $0
+	move $a0, $0
+	j main
+	nop
+finalA:
+	pop $t3
+	addu $a0, $t3, $v0
+	call project3_output_number
+	li $a1, 0
+	move $v0, $0
+	move $a0, $0
+	j main
+	nop
+
+finalS:
+	pop $t3
+	subu $a0, $t3, $v0
+	call project3_output_number
+	li $a1, 0
+	move $v0, $0
+	move $a0, $0
+	j main
+	nop                                                                                                                                                                                                                                                                                                                                                 project_3_uart_output_module.asm                                                                    100644  000000  000000  00000013546 13012166776 015661  0                                                                                                    ustar 00                                                                000000  000000                                                                                                                                                                         # Written by Christopher Mar
+# For use with ASU CST 250 Project 3 only
+
+bcd_storage_p3:
+	.space 10	#creates 10 words here
+
+invalid_char_p3:
+	.asciiz "ERROR: Invalid character\n"
+invalid_expression_p3:
+	.asciiz "ERROR: Invalid expression\n"
+input_overflow_p3:
+	.asciiz "ERROR: Input overflow\n"
+output_overflow_p3:
+	.asciiz "ERROR: Output overflow\n"
+unknown_error_p3:
+	.asciiz "ERROR: Unknown error code\n"
+
+
+project3_output_number:
+push $ra
+# Check for error
+beq $a1, $0, UART_no_error_p3
+	nop
+	addiu $t0, $0, 1
+	li $a0, invalid_char_p3
+	beq $a1, $t0, display_error_message_p3
+	nop
+	addiu $t0, $t0, 1
+	li $a0, invalid_expression_p3
+	beq $a1, $t0, display_error_message_p3
+	nop
+	addiu $t0, $t0, 1
+	li $a0, input_overflow_p3
+	beq $a1, $t0, display_error_message_p3
+	nop
+	addiu $t0, $t0, 1
+	li $a0, output_overflow_p3
+	beq $a1, $t0, display_error_message_p3
+	nop
+	li $a0, unknown_error_p3
+
+display_error_message_p3:
+	jal libplp_uart_write_string_p3
+	nop
+	pop $ra
+	return
+
+
+UART_no_error_p3:
+
+#INITIALIZATIONS
+# Saved Values
+lui $s0, 0xF000	#UART
+li $s1, 0x1	#mask for bit 0, used by put_char
+li $s2, 0x2	#mask for bit 1, used by get_char
+li $s3, 10		#used by decimal_to_binary
+li $s4, 48		#subtract from ascii for decimal, used by decimal_to_binary
+
+# Temporary Values
+li $t0, 0		#counter in subroutines
+li $t1, 0		#x: used for UART character reads and writes
+
+# check if 0
+bne $a0, $0, non-zero_input_p3
+	nop
+	addiu $t1, $0, '0'	# set UART output value to '0'
+	jal put_char_p3
+	nop
+	addiu $t1, $0, 10	# set UART output value to '\n'
+	jal put_char_p3
+	nop
+	pop $ra
+	return
+non-zero_input_p3:
+
+# Get sign bit
+move $t2, $a0
+srl $t2, $t2, 31
+beq $t2, $0, non_negative_output_p3
+	nop
+	jal handle_negative_p3
+	nop
+non_negative_output_p3:
+jal to_bcd_p3
+nop
+jal display_bcd_p3
+nop
+pop $ra
+return
+
+#=======================================FUNCTIONS=======================================
+
+#Description: places number result ($s7) into the space at the label bcd_storage
+#Resources: #uses $t0, t2, $t3, $t4
+to_bcd_p3:
+push $ra
+li $s5, bcd_storage_p3
+#set 10's place followed call subtract function to store bcd
+li $s6, 1000000000	#10
+jal base10_subtract
+nop
+li $s6, 100000000 	#9
+jal base10_subtract
+nop
+li $s6, 10000000	#8
+jal base10_subtract
+nop
+li $s6, 1000000	#7
+jal base10_subtract
+nop
+li $s6, 100000	#6
+jal base10_subtract
+nop
+li $s6, 10000	#5
+jal base10_subtract
+nop
+li $s6, 1000	#4
+jal base10_subtract
+nop
+li $s6, 100	#3
+jal base10_subtract
+nop
+li $s6, 10		#2
+jal base10_subtract
+nop
+li $s6, 1		#1
+jal base10_subtract
+nop
+pop $ra
+jr $ra
+nop
+
+
+#Description: repeats $s7 - $s6 as many times as possilbe, where s6 is a multiple of 10
+#Resources: #uses $t0, t2, $t3, $t4
+base10_subtract:
+li $t5, 0		# bcd place value
+sltu $t6, $a0, $s6	# determine if number less than decimal place
+	subtract_loop_p3:
+		bne $t6, $0, exit_sub_loop_p3
+		nop
+		subu $a0, $a0, $s6
+		addiu $t5, $t5, 1	#incriment bcd
+		sltu $t6, $a0, $s6	# determine if number less than decimal place
+		j subtract_loop_p3
+		nop
+exit_sub_loop_p3:
+sw $t5, 0($s5)	# store bcd value
+addiu $s5, $s5, 4	# increment BCD pointer to next word
+jr $ra
+nop
+
+
+
+#Description: places number result ($s7) into the space at the label bcd_storage
+#Resources: #uses $t0, t2, $t3, $t4
+display_bcd_p3:
+	push $ra
+	li $t3, bcd_storage_p3
+	li $t2, 10		#count down for prints
+	# for 10 starting at bcd_storage, add 48 and put char
+	lw $t1, 0($t3)
+	remove_preceeding_zeros_p3:
+		bne $t1, $0, display_bcd_loop_p3	# branch if non-zero 
+		nop
+		addiu $t3, $t3, 4	# increment BCD pointer	
+		subu $t2, $t2, $s1	# decrement $t2
+		lw $t1, 0($t3)
+		j remove_preceeding_zeros_p3
+		nop
+	display_bcd_loop_p3:
+		# convert to ascii and print
+		addu $t1, $t1, $s4
+		jal put_char_p3
+		nop
+		addiu $t3, $t3, 4	# increment BCD pointer
+		subu $t2, $t2, $s1	# decrement $t2
+		lw $t1, 0($t3)
+		bne $t2, $0, display_bcd_loop_p3
+		nop
+	addiu $t1, $0, 10	# set UART output value to '\n'
+	jal put_char_p3
+	nop
+	pop $ra
+	jr $ra
+	nop
+
+
+#Description: outputs negative sign and converts from 2's compliment	
+#	Resources: $s0 = UART, $s1 = 1, $a0 = number to convert, $t1 = character to print
+handle_negative_p3:
+push $ra		# save return address
+addiu $t1, $0, '-'	# set UART output value to '-'
+jal put_char_p3
+nop
+pop $ra		# restore return address
+
+# 2's compliment conversion
+nor $a0, $a0, $a0
+addu $a0, $a0, $s1
+jr $ra
+nop
+
+
+#Description: Writes $t1 to UART
+#Resources: $s0 = UART, $s1 = 1, $t0 = temp
+put_char_p3:
+	lw $t0, 4($s0)	# load status register
+	and $t0, $t0, $s1	# mask for clear to send
+	bne $t0, $s1, put_char_p3
+	nop
+	sw $t1, 12($s0)	# store in send buffer
+	sw $s1, 0($s0)	# command register: send
+	jr $ra
+	nop
+
+
+# From PLP UART Library
+
+libplp_uart_write_p3:
+	lui $t0, 0xf000		#uart base address
+libplp_uart_write_loop_p3:
+	lw  $t1, 4($t0)		#get the uart status
+	andi $t1, $t1, 0x01	#mask for the cts bit
+	beq $t1, $zero, libplp_uart_write_loop_p3
+	nop
+	sw  $a0, 12($t0)	#write the data to the output buffer
+	sw  $t1, 0($t0)		#send the data!
+	jr $31
+	nop
+
+libplp_uart_write_string_p3: 		#we have a pointer to the string in a0, just loop and increment until we see a \0
+	move $t9, $31		#save the return address
+	move $t8, $a0		#save the argument
+libplp_uart_write_string_multi_word_p3:
+	lw $a0, 0($t8)		#first 1-4 characters
+	ori $t0, $zero, 0x00ff  #reverse the word to make it big endian
+	and $t1, $t0, $a0	#least significant byte
+	sll $t1, $t1, 24
+	srl $a0, $a0, 8
+	and $t2, $t0, $a0	#second byte
+	sll $t2, $t2, 16
+	srl $a0, $a0, 8
+	and $t3, $t0, $a0	#third byte
+	sll $t3, $t3, 8
+	srl $a0, $a0, 8		#last byte in a0
+	or $a0, $t1, $a0
+	or $a0, $t2, $a0
+	or $a0, $t3, $a0
+	beq $a0, $zero, libplp_uart_write_string_done_p3
+	nop
+	ori $t7, $zero, 4
+libplp_uart_write_string_loop_p3:
+	jal libplp_uart_write_p3	#write this byte
+	addiu $t7, $t7, -1
+	srl $a0, $a0, 8
+	bne $a0, $zero, libplp_uart_write_string_loop_p3
+	nop
+	beq $t7, $zero, libplp_uart_write_string_multi_word_p3
+	addiu $t8, $t8, 4	#increment for the next word
+libplp_uart_write_string_done_p3:
+	jr $t9			#go home
+	nop                                                                                                                                                          plp.simconfig                                                                                       100644  000000  000000  00000001416 13012166776 011733  0                                                                                                    ustar 00                                                                000000  000000                                                                                                                                                                         simRunnerDelay::100
+simAllowExecutionOfArbitraryMem::true
+simBusReturnsZeroForUninitRegs::true
+simDumpTraceOnFailedEvaluation::false
+WATCHER
+Register::$t0
+Register::$s0
+Register::$s2
+Register::$t2
+Register::$v0
+END
+MODS
+0::RESERVED_FIELD::0::2048::noframe
+0::RESERVED_FIELD::268435456::16777216::noframe
+1::RESERVED_FIELD::4028628992::1::frame::false::0::0::0::0
+2::RESERVED_FIELD::4027580416::1::frame::false::0::0::0::0
+4::RESERVED_FIELD::4031774720::2::frame::false::0::0::0::0
+7::RESERVED_FIELD::4032823296::1::noframe
+9::RESERVED_FIELD::4037017600::1::frame::false::0::0::0::0
+8::RESERVED_FIELD::4026531840::4::frame::false::0::0::0::0
+6::RESERVED_FIELD::4030726144::2::frame::false::0::0::0::0
+12::RESERVED_FIELD::4029677568::3::frame::false::0::0::0::0
+END
+ISASPECIFIC
+
+
+END
+                                                                                                                                                                                                                                                  plp.hex                                                                                             100644  000000  000000  00000015000 13012166776 010533  0                                                                                                    ustar 00                                                                000000  000000                                                                                                                                                                         32'h3c1d10ff
+32'h37bdfffc
+32'h3c040000
+32'h34840000
+32'h3c050000
+32'h34a50000
+32'h3c12f000
+32'h36520000
+32'h3c130000
+32'h36730030
+32'h3c140000
+32'h36940002
+32'h3c150000
+32'h36b5000a
+32'h3c160000
+32'h36d6003d
+32'h3c170000
+32'h36f7002b
+32'h3c180000
+32'h3718002d
+32'h3c190000
+32'h3739002a
+32'h3c020000
+32'h34420000
+32'h3c0a0000
+32'h354a0000
+32'h8e480004
+32'h01144024
+32'h1514fffd
+32'h00000000
+32'h8e480008
+32'hae540000
+32'h16c80009
+32'h00000000
+32'h8fab0004
+32'h27bd0004
+32'h1177004f
+32'h00000000
+32'h11780070
+32'h00000000
+32'h11790028
+32'h00000000
+32'h1117000d
+32'h00000000
+32'h11180012
+32'h00000000
+32'h11190017
+32'h00000000
+32'h01134023
+32'h0115502a
+32'h1140001a
+32'h00000000
+32'h00551010
+32'h00481021
+32'h0800001a
+32'h00000000
+32'h27bdfffc
+32'hafa20004
+32'h00001025
+32'h27bdfffc
+32'hafa80004
+32'h0800001a
+32'h00000000
+32'h27bdfffc
+32'hafa20004
+32'h00001025
+32'h27bdfffc
+32'hafa80004
+32'h0800001a
+32'h00000000
+32'h27bdfffc
+32'hafa20004
+32'h00001025
+32'h27bdfffc
+32'hafa80004
+32'h0800001a
+32'h00000000
+32'h3c050000
+32'h34a50001
+32'h0800001a
+32'h00000000
+32'h8fab0004
+32'h27bd0004
+32'h01622010
+32'h27bdffa4
+32'hafa40004
+32'hafa50008
+32'hafa6000c
+32'hafa70010
+32'hafa80014
+32'hafa90018
+32'hafaa001c
+32'hafab0020
+32'hafac0024
+32'hafad0028
+32'hafae002c
+32'hafaf0030
+32'hafb00034
+32'hafb10038
+32'hafb2003c
+32'hafb30040
+32'hafb40044
+32'hafb50048
+32'hafb6004c
+32'hafb70050
+32'hafb80054
+32'hafb90058
+32'hafbf005c
+32'h0c0000e5
+32'h00000000
+32'h3c050000
+32'h34a50000
+32'h00001025
+32'h00002025
+32'h0800001a
+32'h00000000
+32'h8fab0004
+32'h27bd0004
+32'h01622021
+32'h27bdffa4
+32'hafa40004
+32'hafa50008
+32'hafa6000c
+32'hafa70010
+32'hafa80014
+32'hafa90018
+32'hafaa001c
+32'hafab0020
+32'hafac0024
+32'hafad0028
+32'hafae002c
+32'hafaf0030
+32'hafb00034
+32'hafb10038
+32'hafb2003c
+32'hafb30040
+32'hafb40044
+32'hafb50048
+32'hafb6004c
+32'hafb70050
+32'hafb80054
+32'hafb90058
+32'hafbf005c
+32'h0c0000e5
+32'h00000000
+32'h3c050000
+32'h34a50000
+32'h00001025
+32'h00002025
+32'h0800001a
+32'h00000000
+32'h8fab0004
+32'h27bd0004
+32'h01622023
+32'h27bdffa4
+32'hafa40004
+32'hafa50008
+32'hafa6000c
+32'hafa70010
+32'hafa80014
+32'hafa90018
+32'hafaa001c
+32'hafab0020
+32'hafac0024
+32'hafad0028
+32'hafae002c
+32'hafaf0030
+32'hafb00034
+32'hafb10038
+32'hafb2003c
+32'hafb30040
+32'hafb40044
+32'hafb50048
+32'hafb6004c
+32'hafb70050
+32'hafb80054
+32'hafb90058
+32'hafbf005c
+32'h0c0000e5
+32'h00000000
+32'h3c050000
+32'h34a50000
+32'h00001025
+32'h00002025
+32'h0800001a
+32'h00000000
+32'h4552524f
+32'h523a2049
+32'h6e76616c
+32'h69642063
+32'h68617261
+32'h63746572
+32'h0a000000
+32'h4552524f
+32'h523a2049
+32'h6e76616c
+32'h69642065
+32'h78707265
+32'h7373696f
+32'h6e0a0000
+32'h4552524f
+32'h523a2049
+32'h6e707574
+32'h206f7665
+32'h72666c6f
+32'h770a0000
+32'h4552524f
+32'h523a204f
+32'h75747075
+32'h74206f76
+32'h6572666c
+32'h6f770a00
+32'h4552524f
+32'h523a2055
+32'h6e6b6e6f
+32'h776e2065
+32'h72726f72
+32'h20636f64
+32'h650a0000
+32'h27bdfffc
+32'hafbf0004
+32'h10a00036
+32'h00000000
+32'h24080001
+32'h3c041000
+32'h34840310
+32'h10a80012
+32'h00000000
+32'h25080001
+32'h3c041000
+32'h3484032c
+32'h10a8000d
+32'h00000000
+32'h25080001
+32'h3c041000
+32'h34840348
+32'h10a80008
+32'h00000000
+32'h25080001
+32'h3c041000
+32'h34840360
+32'h10a80003
+32'h00000000
+32'h3c041000
+32'h34840378
+32'h0c0001ee
+32'h00000000
+32'h8fbf0004
+32'h27bd0004
+32'h8fa40004
+32'h8fa50008
+32'h8fa6000c
+32'h8fa70010
+32'h8fa80014
+32'h8fa90018
+32'h8faa001c
+32'h8fab0020
+32'h8fac0024
+32'h8fad0028
+32'h8fae002c
+32'h8faf0030
+32'h8fb00034
+32'h8fb10038
+32'h8fb2003c
+32'h8fb30040
+32'h8fb40044
+32'h8fb50048
+32'h8fb6004c
+32'h8fb70050
+32'h8fb80054
+32'h8fb90058
+32'h001f0821
+32'h8fbf005c
+32'h27bd005c
+32'h00200008
+32'h00000000
+32'h3c12f000
+32'h3c130000
+32'h36730001
+32'h3c140000
+32'h36940002
+32'h3c150000
+32'h36b5000a
+32'h3c160000
+32'h36d60030
+32'h3c080000
+32'h35080000
+32'h3c090000
+32'h35290000
+32'h14800024
+32'h00000000
+32'h24090030
+32'h0c0001dd
+32'h00000000
+32'h2409000a
+32'h0c0001dd
+32'h00000000
+32'h8fbf0004
+32'h27bd0004
+32'h8fa40004
+32'h8fa50008
+32'h8fa6000c
+32'h8fa70010
+32'h8fa80014
+32'h8fa90018
+32'h8faa001c
+32'h8fab0020
+32'h8fac0024
+32'h8fad0028
+32'h8fae002c
+32'h8faf0030
+32'h8fb00034
+32'h8fb10038
+32'h8fb2003c
+32'h8fb30040
+32'h8fb40044
+32'h8fb50048
+32'h8fb6004c
+32'h8fb70050
+32'h8fb80054
+32'h8fb90058
+32'h001f0821
+32'h8fbf005c
+32'h27bd005c
+32'h00200008
+32'h00000000
+32'h00045025
+32'h000a57c2
+32'h11400003
+32'h00000000
+32'h0c0001d2
+32'h00000000
+32'h0c000177
+32'h00000000
+32'h0c0001b5
+32'h00000000
+32'h8fbf0004
+32'h27bd0004
+32'h8fa40004
+32'h8fa50008
+32'h8fa6000c
+32'h8fa70010
+32'h8fa80014
+32'h8fa90018
+32'h8faa001c
+32'h8fab0020
+32'h8fac0024
+32'h8fad0028
+32'h8fae002c
+32'h8faf0030
+32'h8fb00034
+32'h8fb10038
+32'h8fb2003c
+32'h8fb30040
+32'h8fb40044
+32'h8fb50048
+32'h8fb6004c
+32'h8fb70050
+32'h8fb80054
+32'h8fb90058
+32'h001f0821
+32'h8fbf005c
+32'h27bd005c
+32'h00200008
+32'h00000000
+32'h27bdfffc
+32'hafbf0004
+32'h3c171000
+32'h36f702e8
+32'h3c183b9a
+32'h3718ca00
+32'h0c0001a7
+32'h00000000
+32'h3c1805f5
+32'h3718e100
+32'h0c0001a7
+32'h00000000
+32'h3c180098
+32'h37189680
+32'h0c0001a7
+32'h00000000
+32'h3c18000f
+32'h37184240
+32'h0c0001a7
+32'h00000000
+32'h3c180001
+32'h371886a0
+32'h0c0001a7
+32'h00000000
+32'h3c180000
+32'h37182710
+32'h0c0001a7
+32'h00000000
+32'h3c180000
+32'h371803e8
+32'h0c0001a7
+32'h00000000
+32'h3c180000
+32'h37180064
+32'h0c0001a7
+32'h00000000
+32'h3c180000
+32'h3718000a
+32'h0c0001a7
+32'h00000000
+32'h3c180000
+32'h37180001
+32'h0c0001a7
+32'h00000000
+32'h8fbf0004
+32'h27bd0004
+32'h03e00008
+32'h00000000
+32'h3c0d0000
+32'h35ad0000
+32'h0098702b
+32'h15c00006
+32'h00000000
+32'h00982023
+32'h25ad0001
+32'h0098702b
+32'h080001aa
+32'h00000000
+32'haeed0000
+32'h26f70004
+32'h03e00008
+32'h00000000
+32'h27bdfffc
+32'hafbf0004
+32'h3c0b1000
+32'h356b02e8
+32'h3c0a0000
+32'h354a000a
+32'h8d690000
+32'h15200006
+32'h00000000
+32'h256b0004
+32'h01535023
+32'h8d690000
+32'h080001bc
+32'h00000000
+32'h01364821
+32'h0c0001dd
+32'h00000000
+32'h256b0004
+32'h01535023
+32'h8d690000
+32'h1540fff9
+32'h00000000
+32'h2409000a
+32'h0c0001dd
+32'h00000000
+32'h8fbf0004
+32'h27bd0004
+32'h03e00008
+32'h00000000
+32'h27bdfffc
+32'hafbf0004
+32'h2409002d
+32'h0c0001dd
+32'h00000000
+32'h8fbf0004
+32'h27bd0004
+32'h00842027
+32'h00932021
+32'h03e00008
+32'h00000000
+32'h8e480004
+32'h01134024
+32'h1513fffd
+32'h00000000
+32'hae49000c
+32'hae530000
+32'h03e00008
+32'h00000000
+32'h3c08f000
+32'h8d090004
+32'h31290001
+32'h1120fffd
+32'h00000000
+32'had04000c
+32'had090000
+32'h03e00008
+32'h00000000
+32'h001f8825
+32'h00048025
+32'h8e040000
+32'h340800ff
+32'h01044824
+32'h00094e00
+32'h00042202
+32'h01045024
+32'h000a5400
+32'h00042202
+32'h01045824
+32'h000b5a00
+32'h00042202
+32'h01242025
+32'h01442025
+32'h01642025
+32'h10800009
+32'h00000000
+32'h340f0004
+32'h0c0001e5
+32'h25efffff
+32'h00042202
+32'h1480fffc
+32'h00000000
+32'h11e0ffe9
+32'h26100004
+32'h02200008
+32'h00000000
+plp.image                                                                                           100644  000000  000000  00000004000 13012166776 011027  0                                                                                                    ustar 00                                                                000000  000000                                                                                                                                                                         <ÿ7½ÿü<  4„  <  4¥  <ð 6R  <  6s 0<  6” <  6µ 
+<  6Ö =<  6÷ +<  7 -<  79 *<  4B  <
+  5J  ŽH @$ÿý    ŽH ®T  È 	    « '½ w O    x p    y (     
+              @#P*@      U H!      '½ÿü¯¢   %'½ÿü¯¨       '½ÿü¯¢   %'½ÿü¯¨       '½ÿü¯¢   %'½ÿü¯¨       <  4¥       « '½ b '½ÿ¤¯¤ ¯¥ ¯¦ ¯§ ¯¨ ¯© ¯ª ¯«  ¯¬ $¯­ (¯® ,¯¯ 0¯° 4¯± 8¯² <¯³ @¯´ D¯µ H¯¶ L¯· P¯¸ T¯¹ X¯¿ \  å    <  4¥    %   %      « '½ b !'½ÿ¤¯¤ ¯¥ ¯¦ ¯§ ¯¨ ¯© ¯ª ¯«  ¯¬ $¯­ (¯® ,¯¯ 0¯° 4¯± 8¯² <¯³ @¯´ D¯µ H¯¶ L¯· P¯¸ T¯¹ X¯¿ \  å    <  4¥    %   %      « '½ b #'½ÿ¤¯¤ ¯¥ ¯¦ ¯§ ¯¨ ¯© ¯ª ¯«  ¯¬ $¯­ (¯® ,¯¯ 0¯° 4¯± 8¯² <¯³ @¯´ D¯µ H¯¶ L¯· P¯¸ T¯¹ X¯¿ \  å    <  4¥    %   %      ERROR: Invalid character
+   ERROR: Invalid expression
+  ERROR: Input overflow
+  ERROR: Output overflow
+ ERROR: Unknown error code
+  '½ÿü¯¿   6    $ < 4„¨     % < 4„,¨ 
+    % < 4„H¨     % < 4„`¨     < 4„x î    ¿ '½ ¤ ¥ ¦ § ¨ © ª «  ¬ $­ (® ,¯ 0° 4± 8² <³ @´ Dµ H¶ L· P¸ T¹ X !¿ \'½ \       <ð <  6s <  6” <  6µ 
+<  6Ö 0<  5  <	  5)  € $    $	 0 Ý    $	 
+ Ý    ¿ '½ ¤ ¥ ¦ § ¨ © ª «  ¬ $­ (® ,¯ 0° 4± 8² <³ @´ Dµ H¶ L· P¸ T¹ X !¿ \'½ \        P% 
+WÂ@      Ò     w     µ    ¿ '½ ¤ ¥ ¦ § ¨ © ª «  ¬ $­ (® ,¯ 0° 4± 8² <³ @´ Dµ H¶ L· P¸ T¹ X !¿ \'½ \       '½ÿü¯¿ < 6÷è<;š7Ê  §    <õ7á  §    < ˜7–€ §    < 7B@ §    < 7†  §    <  7' §    <  7è §    <  7 d §    <  7 
+ §    <  7  §    ¿ '½ à     <
+  5­   ˜p+À      ˜ #%­  ˜p+ ª    ®í  &÷ à     '½ÿü¯¿ < 5kè<
+  5J 
+i        %k SP#i   ¼    6H! Ý    %k SP#i  @ÿù    $	 
+ Ý    ¿ '½ à     '½ÿü¯¿ $	 - Ý    ¿ '½  „ ' “ !à     ŽH @$ÿý    ®I ®S  à     <ð 	 1)  ÿý    ­ ­	  à      ˆ% €%Ž  4 ÿH$ 	N  "P$ 
+T  "X$ Z  "$ %D %d %€ 	    4  å%ïÿÿ "€ÿü    àÿé&                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
